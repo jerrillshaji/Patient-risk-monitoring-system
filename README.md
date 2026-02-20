@@ -21,7 +21,6 @@ A comprehensive clinical decision support system for patient data collection, au
 - [Sample Data](#sample-data)
 - [API Reference](#api-reference)
 - [Features Implementation Status](#features-implementation-status)
-- [Requirements Not Completed](#requirements-not-completed)
 - [Project Structure](#project-structure)
 - [Troubleshooting](#troubleshooting)
 - [Documentation](#documentation)
