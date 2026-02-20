@@ -1,0 +1,17 @@
+﻿{
+  "fullName":"Test Patient",
+  "dateOfBirth":"1990-01-01",
+  "age":36,
+  "gender":"Female",
+  "contact":"555-0000",
+  "admissionDate":"2026-02-20T00:00:00Z",
+  "heartRate":72,
+  "systolicBP":120,
+  "diastolicBP":80,
+  "spo2":98,
+  "temperature":36.6,
+  "respRate":16,
+  "chronicConditions":{"diabetes":false,"copd":false,"cardiacDisease":false},
+  "labs":{"wbc":false,"creatinine":false,"crp":false},
+  "notes":"smoke test"
+}

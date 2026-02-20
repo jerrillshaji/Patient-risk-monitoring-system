@@ -1,0 +1,234 @@
+/* Audit Log Timeline Styles */
+.audit-log-container {
+  background: white;
+  border-radius: 8px;
+  padding: 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.audit-log-container h2 {
+  margin-top: 0;
+  color: #2c3e50;
+  margin-bottom: 2rem;
+}
+
+.empty-history {
+  text-align: center;
+  color: #7f8c8d;
+  padding: 2rem 0;
+  font-style: italic;
+}
+
+/* Timeline */
+.timeline {
+  position: relative;
+}
+
+.timeline::before {
+  content: "";
+  position: absolute;
+  left: 30px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(180deg, #3498db 0%, #95a5a6 100%);
+}
+
+/* Timeline Item */
+.timeline-item {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 2rem;
+  position: relative;
+}
+
+.timeline-item:last-child {
+  margin-bottom: 0;
+}
+
+/* Timeline Marker */
+.timeline-marker {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+}
+
+.marker-dot {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: 4px solid white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  color: white;
+  font-size: 0.85rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  margin-top: -5px;
+}
+
+.marker-dot.risk-high {
+  background: #f44336;
+}
+
+.marker-dot.risk-medium {
+  background: #ff9800;
+}
+
+.marker-dot.risk-low {
+  background: #4caf50;
+}
+
+/* Timeline Content */
+.timeline-content {
+  flex: 1;
+  padding-top: 0.5rem;
+}
+
+.log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: 0.8rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.log-field {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1.1rem;
+  text-transform: capitalize;
+}
+
+.log-timestamp {
+  color: #7f8c8d;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+/* Log Body */
+.log-body {
+  background: #f9f9f9;
+  padding: 1rem;
+  border-radius: 6px;
+  border-left: 3px solid #3498db;
+}
+
+.change-container {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.change-item {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.change-item strong {
+  display: block;
+  color: #2c3e50;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+}
+
+.old-value,
+.new-value {
+  display: block;
+  font-family: "Courier New", monospace;
+  padding: 0.5rem;
+  background: white;
+  border-radius: 4px;
+  font-size: 0.95rem;
+}
+
+.old-value {
+  color: #c0392b;
+  border-left: 3px solid #c0392b;
+  padding-left: 0.7rem;
+}
+
+.new-value {
+  color: #27ae60;
+  border-left: 3px solid #27ae60;
+  padding-left: 0.7rem;
+}
+
+.arrow {
+  font-size: 1.5rem;
+  color: #95a5a6;
+  font-weight: 700;
+  align-self: center;
+}
+
+/* Risk Change */
+.risk-change {
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid #e0e0e0;
+  color: #e67e22;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.risk-change strong {
+  display: block;
+  margin-bottom: 0.3rem;
+  color: #2c3e50;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .timeline::before {
+    left: 20px;
+  }
+
+  .timeline-marker {
+    position: absolute;
+    left: -10px;
+    top: 0;
+  }
+
+  .marker-dot {
+    width: 50px;
+    height: 50px;
+    font-size: 0.75rem;
+  }
+
+  .timeline-item {
+    margin-left: 40px;
+    gap: 1rem;
+  }
+
+  .timeline-content {
+    padding-left: 0;
+  }
+
+  .log-header {
+    flex-direction: column;
+  }
+
+  .change-container {
+    flex-direction: column;
+  }
+
+  .change-item {
+    width: 100%;
+  }
+
+  .arrow {
+    align-self: flex-start;
+    margin-left: 0.5rem;
+  }
+
+  .log-body {
+    padding: 0.8rem;
+  }
+}
