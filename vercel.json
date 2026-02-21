@@ -1,0 +1,7 @@
+{
+  "outputDirectory": "dist",
+  "installCommand": "cd patient && npm install --legacy-peer-deps",
+  "buildCommand": "cd patient && npm run build",
+  "devCommand": "cd patient && npm run dev",
+  "framework": "vite"
+}
