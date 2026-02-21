@@ -1,8 +1,7 @@
 {
-  "outputDirectory": "dist",
-  "installCommand": "npm install --legacy-peer-deps",
-  "buildCommand": "npm run build",
-  "devCommand": "npm run dev",
+  "buildCommand": "cd patient && npm run build",
+  "installCommand": "cd patient && npm install --legacy-peer-deps",
+  "outputDirectory": "patient/dist",
   "framework": "vite",
   "rewrites": [
     {
