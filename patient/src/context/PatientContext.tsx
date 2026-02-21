@@ -2,7 +2,6 @@ import React, { createContext, useState, useContext, useEffect } from "react";
 import type { Patient } from "../types/types";
 import { calculateRisk } from "../services/riskEngine";
 import { patientAPI } from "../services/api";
-import { v4 as uuidv4 } from "uuid";
 
 const PATIENTS_STORAGE_KEY = "patients";
 
@@ -21,41 +20,37 @@ interface PatientContextType {
     recentAdmissionsCount: number;
   };
   loading: boolean;
+  refreshPatients: () => Promise<void>;
 }
 
 const PatientContext = createContext<PatientContextType | undefined>(undefined);
 
 export const PatientProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [patients, setPatients] = useState<Patient[]>(() => {
-    // Load patients from localStorage as initial cache
-    console.log("[useState init] Loading patients from localStorage cache");
-    try {
-      const stored = localStorage.getItem(PATIENTS_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        console.log("[useState init] Loaded cached patients:", Array.isArray(parsed) ? parsed.length : "not array");
-        return Array.isArray(parsed) ? parsed : [];
-      }
-    } catch (error) {
-      console.error("[useState init] Error loading from localStorage:", error);
-    }
-    return [];
-  });
-
+  const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Load patients from API on component mount
+  // Load patients from Supabase on component mount
   useEffect(() => {
     const loadPatients = async () => {
       try {
         setLoading(true);
+        console.log("[useEffect loadPatients] Loading from Supabase...");
         const data = await patientAPI.getPatients();
-        console.log("[useEffect loadPatients] API returned", data.length, "patients");
+        console.log("[useEffect loadPatients] Supabase returned", data.length, "patients");
         setPatients(data);
         localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(data));
       } catch (error) {
-        console.error("[useEffect loadPatients] Error loading from API:", error);
-        // Fallback to localStorage cache remains in place (no action needed)
+        console.error("[useEffect loadPatients] Error loading from Supabase:", error);
+        // Fallback to localStorage cache
+        try {
+          const stored = localStorage.getItem(PATIENTS_STORAGE_KEY);
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            setPatients(Array.isArray(parsed) ? parsed : []);
+          }
+        } catch (fallbackError) {
+          console.error("[useEffect loadPatients] Fallback also failed:", fallbackError);
+        }
       } finally {
         setLoading(false);
       }
@@ -64,40 +59,50 @@ export const PatientProvider: React.FC<{ children: React.ReactNode }> = ({ child
     loadPatients();
   }, []);
 
-  // Save patients to localStorage whenever they change
+  // Save patients to localStorage whenever they change (local cache)
   useEffect(() => {
-    console.log("[useEffect Save] Caching patients to localStorage. Count:", patients.length);
-    localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patients));
+    if (patients.length > 0) {
+      localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(patients));
+    }
   }, [patients]);
+
+  const refreshPatients = async () => {
+    try {
+      const data = await patientAPI.getPatients();
+      setPatients(data);
+      localStorage.setItem(PATIENTS_STORAGE_KEY, JSON.stringify(data));
+    } catch (error) {
+      console.error("[refreshPatients] Error:", error);
+    }
+  };
 
   const addPatient = async (
     p: Omit<Patient, "id" | "riskScore" | "riskLevel" | "lastUpdated" | "history">
   ): Promise<Patient> => {
-    console.log("[addPatient] Input patient data:", p);
     try {
-      // Create local patient object for initial state
-      const localPatient: Patient = {
+      // Calculate risk score before sending to Supabase
+      const tempPatient: Patient = {
         ...p,
-        id: uuidv4(),
+        id: 0, // Temporary ID, will be replaced by Supabase
         lastUpdated: new Date().toISOString(),
         history: [],
         riskScore: 0,
         riskLevel: "LOW",
       };
 
-      const risk = calculateRisk(localPatient);
-      const newPatient: Patient = {
-        ...localPatient,
+      const risk = calculateRisk(tempPatient);
+      
+      const patientToCreate = {
+        ...p,
         riskScore: risk.score,
         riskLevel: risk.level,
       };
 
-      console.log("[addPatient] Sending to API:", newPatient);
-      // Call API to create patient (API will handle Supabase storage)
-      const apiResponse = await patientAPI.createPatient(newPatient);
-      console.log("[addPatient] API response:", apiResponse);
+      console.log("[addPatient] Creating patient in Supabase:", patientToCreate);
+      const apiResponse = await patientAPI.createPatient(patientToCreate);
+      console.log("[addPatient] Created patient with ID:", apiResponse.id);
 
-      // Update local state with API response
+      // Update local state with Supabase response
       setPatients((prev) => [...prev, apiResponse]);
       return apiResponse;
     } catch (error) {
@@ -107,29 +112,29 @@ export const PatientProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const updatePatient = async (id: string, updated: Partial<Patient>): Promise<Patient> => {
-    console.log("[updatePatient] Updating patient", id, "with:", updated);
     try {
       const oldPatient = patients.find((p) => String(p.id) === String(id));
       if (!oldPatient) {
         throw new Error("Patient not found");
       }
 
-      // Create updated patient object
+      // Calculate new risk score
       const updatedPatient: Patient = {
         ...oldPatient,
         ...updated,
         lastUpdated: new Date().toISOString(),
       };
 
-      // Recalculate risk
       const risk = calculateRisk(updatedPatient);
-      updatedPatient.riskScore = risk.score;
-      updatedPatient.riskLevel = risk.level;
+      const patientToUpdate = {
+        ...updated,
+        riskScore: risk.score,
+        riskLevel: risk.level,
+      };
 
-      console.log("[updatePatient] Sending to API:", updatedPatient);
-      // Call API to update patient
-      const apiResponse = await patientAPI.updatePatient(id, updatedPatient);
-      console.log("[updatePatient] API response:", apiResponse);
+      console.log("[updatePatient] Updating patient in Supabase:", patientToUpdate);
+      const apiResponse = await patientAPI.updatePatient(id, patientToUpdate);
+      console.log("[updatePatient] Updated patient:", apiResponse.id);
 
       // Update local state
       setPatients((prev) =>
@@ -143,11 +148,10 @@ export const PatientProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const deletePatient = async (id: string): Promise<void> => {
-    console.log("[deletePatient] Deleting patient", id);
     try {
-      // Call API to delete patient
+      console.log("[deletePatient] Deleting patient from Supabase:", id);
       await patientAPI.deletePatient(id);
-      console.log("[deletePatient] API delete successful");
+      console.log("[deletePatient] Deleted successfully");
 
       // Update local state
       setPatients((prev) => prev.filter((p) => String(p.id) !== String(id)));
@@ -180,11 +184,10 @@ export const PatientProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const getDashboardMetrics = () => {
-    console.log("[getDashboardMetrics] Called with", patients.length, "patients");
     const highRiskCount = patients.filter((p) => p.riskLevel === "HIGH").length;
     const mediumRiskCount = patients.filter((p) => p.riskLevel === "MEDIUM").length;
     const lowRiskCount = patients.filter((p) => p.riskLevel === "LOW").length;
-    
+
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const recentAdmissionsCount = patients.filter(
@@ -202,7 +205,17 @@ export const PatientProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   return (
     <PatientContext.Provider
-      value={{ patients, addPatient, updatePatient, deletePatient, getPatient, fetchPatientById, getDashboardMetrics, loading }}
+      value={{ 
+        patients, 
+        addPatient, 
+        updatePatient, 
+        deletePatient, 
+        getPatient, 
+        fetchPatientById, 
+        getDashboardMetrics, 
+        loading,
+        refreshPatients,
+      }}
     >
       {children}
     </PatientContext.Provider>

@@ -1,11 +1,35 @@
 # Patient Risk Monitoring System
 
-A comprehensive clinical decision support system for patient data collection, automated risk assessment, and audit tracking. Built with React, TypeScript, Node.js/Express, and MySQL.
+A comprehensive clinical decision support system for patient data collection, automated risk assessment, and audit tracking. Built with React, TypeScript, and **Supabase** (serverless PostgreSQL).
 
 **Technical Assessment Submission for Amrita Technologies**
 
 ![Status](https://img.shields.io/badge/status-complete-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
+
+---
+
+## ⚡ Quick Start
+
+```bash
+# 1. Install dependencies
+cd patient
+npm install --legacy-peer-deps
+
+# 2. Configure Supabase (create .env.local)
+cp .env.example .env.local
+# Edit .env.local with your Supabase credentials
+
+# 3. Set up Supabase database
+# Run supabase-schema.sql in your Supabase SQL Editor
+
+# 4. Start the app
+npm run dev
+```
+
+Access at: **http://localhost:5173**
+
+📚 **Full Setup Guide:** See [`patient/SUPABASE_SETUP.md`](patient/SUPABASE_SETUP.md)
 
 ---
 
@@ -112,30 +136,22 @@ To design and implement a clinical decision support system that:
 | TypeScript | 5.9.3 | Type safety |
 | Vite | 7.3.1 | Build tool & dev server |
 | React Router | 6.20.0 | Page navigation |
-| Axios | 1.6.2 | HTTP client |
+| **Supabase Client** | 2.97.0 | Database & Storage access |
 | Recharts | 2.10.0 | Data visualization |
 | React Context API | - | State management |
 
-### Backend
-
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| Node.js | 18+ | Runtime environment |
-| Express | 5.2.1 | REST API framework |
-| MySQL2 | 3.3.0 | Database driver |
-| Multer | 2.0.2 | File upload handling |
-| PDF-parse | 2.4.5 | PDF text extraction |
-| dotenv | 16.3.1 | Environment configuration |
-| CORS | 2.8.6 | Cross-origin resource sharing |
-| nodemon | 3.1.13 | Development auto-restart |
-
-### Database
+### Backend (Serverless)
 
 | Technology | Purpose |
 |------------|---------|
-| MySQL | Relational database storage |
-| InnoDB | Storage engine |
-| UTF8MB4 | Character encoding |
+| **Supabase** | Serverless backend (PostgreSQL + Storage + Auth) |
+| **PostgreSQL** | Relational database with full ACID compliance |
+| **Row Level Security (RLS)** | Database-level authorization |
+| **Supabase Storage** | S3-compatible file storage for PDFs |
+
+### Architecture
+
+**No backend server required!** The application communicates directly with Supabase using the Supabase JavaScript client.
 
 ---
 
@@ -143,24 +159,21 @@ To design and implement a clinical decision support system that:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     FRONTEND (React + TypeScript)           │
-│                   http://localhost:5173                     │
+│           FRONTEND (React + TypeScript + Vite)              │
+│                  http://localhost:5173                      │
 ├─────────────────────────────────────────────────────────────┤
-│  React Components → PatientContext → Axios API Client      │
+│  React Components → PatientContext → Supabase Client       │
+│                          ↓                                  │
+│  Risk Engine (frontend) → calculateRisk()                  │
 └─────────────────────────────────────────────────────────────┘
-                            ↓ HTTP REST API
+                            ↓ HTTPS
 ┌─────────────────────────────────────────────────────────────┐
-│                     BACKEND (Node.js/Express)               │
-│                   http://localhost:5000                     │
+│                    SUPABASE CLOUD                           │
+│              https://xxxxx.supabase.co                      │
 ├─────────────────────────────────────────────────────────────┤
-│  Routes → Controllers → MySQL Queries → Risk Engine        │
-└─────────────────────────────────────────────────────────────┘
-                            ↓ MySQL Protocol
-┌─────────────────────────────────────────────────────────────┐
-│                     DATABASE (MySQL)                        │
-│                   localhost:3306                            │
-├─────────────────────────────────────────────────────────────┤
-│  patients table | auditLogs table                          │
+│  PostgreSQL Database → patients, audit_logs tables         │
+│  Row Level Security → Authorization policies               │
+│  Storage → pdf-uploads bucket                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -173,78 +186,82 @@ To design and implement a clinical decision support system that:
 Before you begin, ensure you have:
 
 - ✅ **Node.js 18+** installed ([Download](https://nodejs.org/))
-- ✅ **MySQL Server** installed and running (or accessible remotely)
+- ✅ **Supabase Account** ([Create Free Account](https://supabase.com))
 - ✅ **npm** (comes with Node.js)
 
 ### Step 1: Navigate to Project Directory
 
 ```bash
-cd "c:\Users\MI\Documents\Patient risk monitoring system"
+cd patient
 ```
 
-### Step 2: Install Backend Dependencies
+### Step 2: Install Dependencies
 
 ```bash
-cd patient\backend
-npm install
-```
-
-This installs:
-- express, mysql2, cors, dotenv
-- multer, pdf-parse
-- nodemon (dev dependency)
-
-### Step 3: Install Frontend Dependencies
-
-```bash
-cd ..\patient
 npm install --legacy-peer-deps
 ```
 
 This installs:
 - react, react-dom, react-router-dom
-- axios, recharts
-- typescript, vite, eslint
+- @supabase/supabase-js
+- recharts, typescript, vite, eslint
 
-### Step 4: Configure Environment Variables
+### Step 3: Configure Supabase
 
-**Backend Configuration:**
+**Create `.env.local` file:**
 
-Edit `patient\backend\.env`:
-
-```env
-MYSQL_HOST=localhost
-MYSQL_USER=root
-MYSQL_PASSWORD=your_mysql_password
-MYSQL_DATABASE=patientdb
-MYSQL_PORT=3306
-PORT=5000
-NODE_ENV=development
+```bash
+cp .env.example .env.local
 ```
 
-**Frontend Configuration:**
+**Edit `.env.local` with your Supabase credentials:**
 
-The frontend `.env` is already configured with:
 ```env
-VITE_API_URL=http://localhost:5000/api
+VITE_SUPABASE_URL=https://your-project-id.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key-here
 ```
+
+Get these values from: **Supabase Dashboard > Project Settings > API**
+
+### Step 4: Set Up Supabase Database
+
+1. Go to your Supabase project dashboard
+2. Navigate to **SQL Editor**
+3. Copy and paste the contents of `supabase-schema.sql`
+4. Click **Run**
+
+This creates:
+- `patients` table
+- `audit_logs` table  
+- Row Level Security policies
+- Storage bucket for PDFs
 
 ---
 
-## Database Configuration
+## Running the Application
 
-### Step 1: Create MySQL Database
+**Start the development server:**
 
-Open MySQL command line or MySQL Workbench:
-
-```sql
-CREATE DATABASE IF NOT EXISTS patientdb;
-USE patientdb;
+```bash
+npm run dev
 ```
 
-### Step 2: Run Database Schema
+Access at: **http://localhost:5173**
 
-**Windows (Command Prompt):**
+**That's it!** No backend server needed. Supabase handles everything.
+
+---
+
+## Verification
+
+**Test the connection:**
+
+1. Open browser to http://localhost:5173
+2. Click "Add New Patient"
+3. Fill in the form and save
+4. Check Supabase Dashboard > Table Editor to see the data
+
+**For detailed setup instructions, see:** [`patient/SUPABASE_SETUP.md`](patient/SUPABASE_SETUP.md)
 ```cmd
 mysql -u root -p patientdb < "c:\Users\MI\Documents\Patient risk monitoring system\patient\backend\database\schema.sql"
 ```
