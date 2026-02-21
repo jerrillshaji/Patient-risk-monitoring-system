@@ -210,7 +210,28 @@ const extractBooleanByLabel = (text: string, labelPattern: string): boolean | un
   if (nearbyChecked && !nearbyUnchecked) return true;
   if (nearbyUnchecked && !nearbyChecked) return false;
 
+  const widerWindow = text.match(new RegExp(`(?:${labelPattern})\\b(.{0,80})`, "i"))?.[1] ?? "";
+  if (/(?:\byes\b|\btrue\b|\bpositive\b|☑|✅|☒|■|\[(?:x|X|✓|✔)\]|\((?:x|X|✓|✔)\))/i.test(widerWindow)) {
+    return true;
+  }
+  if (/(?:\bno\b|\bfalse\b|\bnegative\b|☐|□|\[\s?\]|\(\s?\))/i.test(widerWindow)) {
+    return false;
+  }
+
   return undefined;
+};
+
+const findDateFallback = (text: string): string | undefined => {
+  const match = text.match(/\b([0-3]?\d[\-\/.][01]?\d[\-\/.](?:\d{2}|\d{4})|(?:19|20)\d{2}[\-\/.][01]?\d[\-\/.][0-3]?\d)\b/);
+  return match?.[1];
+};
+
+const findContactFallback = (text: string): string | undefined => {
+  const email = text.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/);
+  if (email?.[0]) return email[0];
+
+  const phone = text.match(/\b(?:\+?\d{1,3}[\s\-]?)?(?:\(?\d{2,4}\)?[\s\-]?)\d{3,4}[\s\-]?\d{3,4}\b/);
+  return phone?.[0];
 };
 
 const parsePatientText = (rawText: string): Partial<Patient> => {
@@ -224,7 +245,8 @@ const parsePatientText = (rawText: string): Partial<Patient> => {
     extractValueByLabel(text, "date\\s*of\\s*birth|dob|birth\\s*date") ??
       extractFirstMatch(text, [
         /(?:date\s*of\s*birth|dob|birth\s*date)\s*[:\-]?\s*([0-3]?\d[\-\/.][01]?\d[\-\/.](?:\d{2}|\d{4})|(?:\d{4}[\-\/.][01]?\d[\-\/.][0-3]?\d))/i,
-      ])
+      ]) ??
+      findDateFallback(text)
   );
   const age = parseNumber(
     extractFirstMatch(text, [
@@ -240,7 +262,8 @@ const parsePatientText = (rawText: string): Partial<Patient> => {
     extractValueByLabel(text, "contact(?:\\s*(?:details|number|no\\.?))?|phone(?:\\s*number)?|mobile(?:\\s*number)?|email") ??
       extractFirstMatch(text, [
         /(?:contact(?:\s*(?:details|number|no\.?))?|phone(?:\s*number)?|mobile(?:\s*number)?|email)\s*[:\-]?\s*([+()\-\d\s]{7,20}|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/i,
-      ])
+      ]) ??
+      findContactFallback(text)
   );
   const admissionDate = parseDate(
     extractFirstMatch(text, [
@@ -633,8 +656,6 @@ export const patientAPI = {
       }
 
       const parsed = parsePatientText(fullText);
-      console.log("[parsePDF] Extracted text preview:", normalizeText(fullText).slice(0, 1200));
-      console.log("[parsePDF] Parsed fields:", parsed);
       if (Object.keys(parsed).length === 0) {
         throw new Error("No patient fields could be detected in this PDF.");
       }

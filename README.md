@@ -1,247 +1,74 @@
 # Patient Risk Monitoring System
 
-A comprehensive clinical decision support system for patient data collection, automated risk assessment, and audit tracking. Built with React, TypeScript, and **Supabase** (serverless PostgreSQL).
+Clinical decision support app for patient data entry, risk scoring, and audit tracking.
 
-**Technical Assessment Submission for Amrita Technologies**
+## Tech Stack
 
-![Status](https://img.shields.io/badge/status-complete-brightgreen)
-![License](https://img.shields.io/badge/license-MIT-blue)
+- React 19 + TypeScript + Vite
+- Supabase (PostgreSQL + Storage)
+- React Router + Recharts
 
----
+## Features
 
-## ⚡ Quick Start
+- Patient CRUD (create, edit, delete, list)
+- Real-time risk calculation (LOW / MEDIUM / HIGH)
+- Audit history for field changes
+- Dashboard with risk metrics/charts
+- PDF upload and form auto-fill (editable before save)
+
+## Setup
 
 ### Prerequisites
-- Node.js 18+ installed
-- Supabase account (free tier works)
 
-### 1. Install Dependencies
+- Node.js 18+
+- Supabase project
+
+### Install
+
 ```bash
-cd patient
-npm install --legacy-peer-deps
+npm install
 ```
 
-### 2. Configure Supabase
-Create `.env.local` file:
-```bash
-cp .env.example .env.local
-```
+### Environment
 
-Edit `.env.local` with your Supabase credentials:
+Create `.env.local` in project root:
+
 ```env
 VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key-here
+VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-**Get credentials from:** Supabase Dashboard → Project Settings → API
+### Database
 
-### 3. Set Up Database
-1. Go to Supabase Dashboard → SQL Editor
-2. Copy entire content of `supabase-schema.sql`
-3. Paste and click **Run**
+Run `supabase-schema.sql` in Supabase SQL Editor.
 
-This creates:
-- `patients` table
-- `audit_logs` table
-- Row Level Security policies
-- Storage bucket for PDFs
+### Run
 
-### 4. Start the App
 ```bash
 npm run dev
 ```
 
-Access at: **http://localhost:5173**
+App runs at `http://localhost:5173`.
 
----
+## Build
 
-## 📚 Documentation
-
-- **Setup Guide:** See [`SUPABASE_SETUP.md`](SUPABASE_SETUP.md) for detailed instructions
-- **Architecture:** Serverless with Supabase (no backend server needed)
-
----
-
-## 🎯 Features
-
-### Core Features
-- ✅ **Patient Management** - Create, read, update, delete patients
-- ✅ **Automated Risk Calculation** - Real-time risk scoring based on clinical parameters
-- ✅ **Audit Trail System** - Complete change history with before/after values
-- ✅ **Dashboard Analytics** - Risk distribution metrics and visualizations
-- ✅ **PDF Upload** - Document upload to Supabase Storage
-- ✅ **Risk Filtering** - Filter patients by LOW/MEDIUM/HIGH risk
-
-### Risk Calculation
-- **LOW** (Green): Score 0-2
-- **MEDIUM** (Yellow/Orange): Score 3-5
-- **HIGH** (Red): Score 6+ or critical escalation
-
-**Scoring Factors:**
-- Age, vital signs (HR, BP, SpO2, temperature, resp rate)
-- Chronic conditions (diabetes, COPD, cardiac disease)
-- ER visits in last 30 days
-- Lab indicators (WBC, creatinine, CRP)
-
----
-
-## 🏗️ Architecture
-
-### Technology Stack
-
-| Component | Technology |
-|-----------|------------|
-| **Frontend** | React 19 + TypeScript + Vite |
-| **Database** | Supabase PostgreSQL |
-| **Storage** | Supabase Storage (S3-compatible) |
-| **State** | React Context API |
-| **Charts** | Recharts |
-| **Routing** | React Router v6 |
-
-### System Architecture
-
-```
-┌─────────────────────────────────────┐
-│   React Frontend (Vite)             │
-│   http://localhost:5173             │
-├─────────────────────────────────────┤
-│   Components → Context → Supabase   │
-│   Risk Engine (frontend)            │
-└─────────────────────────────────────┘
-                ↓ HTTPS
-┌─────────────────────────────────────┐
-│   Supabase Cloud                    │
-│   - PostgreSQL Database             │
-│   - Row Level Security              │
-│   - File Storage                    │
-└─────────────────────────────────────┘
-```
-
-**No backend server required!** Supabase handles everything.
-
----
-
-## 📁 Project Structure
-
-```
-patient/
-├── src/
-│   ├── components/
-│   │   ├── Dashboard/       # Analytics dashboard
-│   │   ├── PatientList/     # Patient table view
-│   │   ├── PatientDetails/  # Patient form & details
-│   │   └── AuditLog/        # Change history timeline
-│   ├── context/
-│   │   └── PatientContext.tsx  # Global state management
-│   ├── services/
-│   │   ├── api.ts           # Supabase API client
-│   │   └── riskEngine.ts    # Risk calculation logic
-│   ├── lib/
-│   │   └── supabase.ts      # Supabase client init
-│   ├── pages/               # Route pages
-│   ├── types/               # TypeScript types
-│   └── utils/               # Helper functions
-├── .env.local               # Supabase credentials
-├── .env.example             # Environment template
-├── supabase-schema.sql      # Database schema
-├── SUPABASE_SETUP.md        # Detailed setup guide
-├── package.json             # Dependencies
-└── README.md                # This file
-```
-
----
-
-## 🧪 Testing
-
-After setup, verify:
-
-- [ ] Dashboard displays metrics
-- [ ] Can create new patient
-- [ ] Can edit patient (changes saved to Supabase)
-- [ ] Can delete patient
-- [ ] Risk score updates dynamically
-- [ ] Audit log tracks all changes
-- [ ] PDF upload works
-- [ ] Data persists after refresh
-
----
-
-## 🔐 Security
-
-### Row Level Security (RLS)
-
-Current setup uses **permissive policies** (development mode):
-```sql
-CREATE POLICY "Allow all operations on patients"
-  ON patients FOR ALL USING (true) WITH CHECK (true);
-```
-
-**For production**, enable Supabase Authentication and update policies:
-```sql
-CREATE POLICY "Authenticated users only"
-  ON patients FOR ALL
-  USING (auth.role() = 'authenticated');
-```
-
----
-
-## 🚀 Deployment
-
-### Frontend
-Deploy to Vercel, Netlify, or Cloudflare Pages:
 ```bash
 npm run build
+npm run preview
 ```
 
-### Environment Variables
-Set in your deployment platform:
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
+## Project Structure
 
-### Database
-Use the same Supabase project (or create production project).
+- `src/pages` - route pages
+- `src/components` - UI components
+- `src/context/PatientContext.tsx` - app state
+- `src/services/api.ts` - Supabase + PDF parsing
+- `src/services/riskEngine.ts` - risk calculation logic
+- `src/lib/supabase.ts` - Supabase client
+- `supabase-schema.sql` - database schema
 
----
+## Notes
 
-## 🆘 Troubleshooting
-
-### "Missing Supabase environment variables"
-**Fix:** Create `.env.local` with your Supabase credentials
-
-### "relation does not exist"
-**Fix:** Run `supabase-schema.sql` in Supabase SQL Editor
-
-### "Permission denied"
-**Fix:** Check RLS policies in Supabase dashboard
-
-### PDF upload fails
-**Fix:** Ensure `pdf-uploads` storage bucket exists
-
----
-
-## 📈 Future Enhancements
-
-- [ ] Enable Supabase Authentication
-- [ ] Add real-time subscriptions for live updates
-- [ ] Create Supabase Edge Function for server-side PDF parsing
-- [ ] Add email notifications for high-risk patients
-- [ ] Export patient data to CSV/PDF
-- [ ] Advanced analytics and reporting
-
----
-
-## 📚 Resources
-
-- **Supabase Docs:** https://supabase.com/docs
-- **React Docs:** https://react.dev
-- **Vite Docs:** https://vitejs.dev
-
----
-
-## 📄 License
-
-MIT License - See LICENSE file for details.
-
----
-
-**🎉 Your Patient Risk Monitoring System is fully serverless and ready to use!**
+- Risk values are system-calculated from patient inputs.
+- Risk is recalculated whenever relevant fields change.
+- Uploaded PDF values are used to pre-fill form fields; users can edit before saving.
