@@ -313,7 +313,7 @@ const PatientEditPage: React.FC = () => {
 
                   // Map returned values safely into formData and recalculate risk
                   setFormData((prev) => {
-                    const merged = { ...prev } as any;
+                    const merged = { ...prev } as Partial<Patient>;
                     if (extracted.fullName) merged.fullName = extracted.fullName;
                     if (extracted.dateOfBirth) merged.dateOfBirth = formatDateForInput(extracted.dateOfBirth);
                     if (extracted.age != null) merged.age = Number(extracted.age);
@@ -326,13 +326,36 @@ const PatientEditPage: React.FC = () => {
                     if (extracted.spo2 != null) merged.spo2 = Number(extracted.spo2);
                     if (extracted.temperature != null) merged.temperature = Number(extracted.temperature);
                     if (extracted.respRate != null) merged.respRate = Number(extracted.respRate);
+                    if (extracted.erVisits != null) merged.erVisits = Number(extracted.erVisits);
+                    if (extracted.chronicConditions) {
+                      merged.chronicConditions = {
+                        ...(prev.chronicConditions || { diabetes: false, copd: false, cardiacDisease: false }),
+                        ...extracted.chronicConditions,
+                      };
+                    }
+                    if (extracted.labs) {
+                      merged.labs = {
+                        ...(prev.labs || { wbc: false, creatinine: false, crp: false }),
+                        ...extracted.labs,
+                      };
+                    }
                     if (extracted.notes) merged.notes = extracted.notes;
 
-                    try {
-                      const fullPatient = merged as Patient;
-                      setRiskResult(calculateRisk(fullPatient));
-                    } catch (e) {
-                      // ignore risk calc errors
+                    const hasValidVitals =
+                      (merged.heartRate || 0) > 0 &&
+                      (merged.systolicBP || 0) > 0 &&
+                      (merged.spo2 || 0) > 0 &&
+                      (merged.temperature || 0) > 0 &&
+                      (merged.respRate || 0) > 0;
+
+                    if (hasValidVitals && merged.fullName) {
+                      try {
+                        setRiskResult(calculateRisk(merged as Patient));
+                      } catch {
+                        setRiskResult(null);
+                      }
+                    } else {
+                      setRiskResult(null);
                     }
 
                     return merged;

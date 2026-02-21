@@ -1,5 +1,10 @@
 import { supabase } from "../lib/supabase";
 import type { Patient, AuditLog } from "../types/types";
+import { calculateAge, formatDateForInput } from "../utils/dateUtils";
+import { GlobalWorkerOptions, getDocument } from "pdfjs-dist";
+import pdfWorkerSrc from "pdfjs-dist/build/pdf.worker.min?url";
+
+GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
 
 /**
  * API Service Layer
@@ -48,6 +53,290 @@ interface DbAuditLog {
   risk_level_after: string | null;
   created_at: string;
 }
+
+const normalizeText = (text: string): string => text.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+
+const extractFirstMatch = (text: string, patterns: RegExp[]): string | undefined => {
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) {
+      return match[1].trim();
+    }
+  }
+  return undefined;
+};
+
+const parseNumber = (value?: string): number | undefined => {
+  if (!value) return undefined;
+  const parsed = Number.parseFloat(value.replace(/,/g, "").trim());
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const parseDate = (value?: string): string | undefined => {
+  if (!value) return undefined;
+
+  const trimmed = value.trim();
+  const normalized = trimmed.replace(/\./g, "/").replace(/-/g, "/");
+  const splitDate = normalized.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+
+  if (splitDate) {
+    const first = Number(splitDate[1]);
+    const second = Number(splitDate[2]);
+    let year = Number(splitDate[3]);
+
+    if (year < 100) {
+      year += year > 30 ? 1900 : 2000;
+    }
+
+    const isLikelyDayFirst = first > 12;
+    const month = String(isLikelyDayFirst ? second : first).padStart(2, "0");
+    const day = String(isLikelyDayFirst ? first : second).padStart(2, "0");
+
+    return formatDateForInput(`${year}-${month}-${day}`);
+  }
+
+  const formatted = formatDateForInput(trimmed);
+  return formatted || undefined;
+};
+
+const parseBooleanValue = (value?: string): boolean | undefined => {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+
+  if (["yes", "true", "1", "positive", "present", "elevated", "high", "abnormal", "checked"].includes(normalized)) {
+    return true;
+  }
+  if (["no", "false", "0", "negative", "none", "normal", "not present", "absent", "unchecked"].includes(normalized)) {
+    return false;
+  }
+
+  return undefined;
+};
+
+const parseGender = (value?: string): Patient["gender"] | undefined => {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+
+  if (normalized.startsWith("m")) return "Male";
+  if (normalized.startsWith("f")) return "Female";
+  if (normalized.startsWith("o")) return "Other";
+
+  return undefined;
+};
+
+const cleanInlineField = (value?: string): string | undefined => {
+  if (!value) return undefined;
+  const cleaned = value
+    .replace(/\s{2,}/g, " ")
+    .replace(/[|•]/g, " ")
+    .trim();
+  return cleaned || undefined;
+};
+
+const STOP_LABELS_PATTERN =
+  "age|gender|sex|patient\\s*id|date\\s*of\\s*(?:birth|examination)|admission\\s*date|hospital|contact(?:\\s*(?:details|number|no\\.?))?|phone(?:\\s*number)?|mobile(?:\\s*number)?|email|vital\\s*signs|clinical\\s*notes|heart\\s*rate|blood\\s*pressure|oxygen\\s*saturation|spo2|body\\s*temperature|respiratory\\s*rate|er\\s*visits|diabetes|copd|cardiac\\s*disease|heart\\s*disease|wbc|creatinine|crp";
+
+const extractValueByLabel = (text: string, labelPattern: string): string | undefined => {
+  const match = text.match(
+    new RegExp(
+      `(?:${labelPattern})\\s*[:\\-]?\\s*(.+?)(?=\\s+(?:${STOP_LABELS_PATTERN})\\b\\s*:?|$)`,
+      "i"
+    )
+  );
+  return cleanInlineField(match?.[1]);
+};
+
+const sanitizeFullName = (value?: string): string | undefined => {
+  const cleaned = cleanInlineField(value);
+  if (!cleaned) return undefined;
+
+  const withoutTrailingLabels = cleaned.replace(
+    /\s+(?:age|gender|patient\s*id|date\s*of\s*examination|date\s*of\s*birth|hospital|vital\s*signs|parameter|clinical\s*notes)\b[\s\S]*$/i,
+    ""
+  );
+
+  const normalizedName = withoutTrailingLabels
+    .replace(/[^A-Za-z.'\-\s]/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  return normalizedName || undefined;
+};
+
+const extractNameFallback = (text: string): string | undefined => {
+  const match = text.match(
+    /(?:^|\b)([A-Z][A-Za-z.'\-]+(?:\s+[A-Z][A-Za-z.'\-]+){1,3})(?=\s+(?:age|gender|patient\s*id|date\s*of\s*(?:birth|examination)|hospital)\b)/i
+  );
+  return sanitizeFullName(match?.[1]);
+};
+
+const extractBooleanByLabel = (text: string, labelPattern: string): boolean | undefined => {
+  const stateAfterLabel = text.match(
+    new RegExp(
+      `(?:${labelPattern})\\s*(?:[:\\-]?\\s*)?(yes|no|true|false|positive|negative|present|absent|normal|abnormal|checked|unchecked)\\b`,
+      "i"
+    )
+  )?.[1];
+
+  const directState = parseBooleanValue(stateAfterLabel);
+  if (directState !== undefined) {
+    return directState;
+  }
+
+  const checkedBeforeLabel = new RegExp(`(?:☑|✅|\\[(?:x|X|✓|✔)\\]|\\((?:x|X|✓|✔)\\))\\s*(?:${labelPattern})\\b`, "i").test(text);
+  if (checkedBeforeLabel) {
+    return true;
+  }
+
+  const uncheckedBeforeLabel = new RegExp(`(?:☐|\\[\\s?\\]|\\(\\s?\\))\\s*(?:${labelPattern})\\b`, "i").test(text);
+  if (uncheckedBeforeLabel) {
+    return false;
+  }
+
+  const checkedAfterLabel = new RegExp(`(?:${labelPattern})\\b\\s*(?:☑|✅|\\[(?:x|X|✓|✔)\\]|\\((?:x|X|✓|✔)\\))`, "i").test(text);
+  if (checkedAfterLabel) {
+    return true;
+  }
+
+  const uncheckedAfterLabel = new RegExp(`(?:${labelPattern})\\b\\s*(?:☐|\\[\\s?\\]|\\(\\s?\\))`, "i").test(text);
+  if (uncheckedAfterLabel) {
+    return false;
+  }
+
+  const nearbyWindow = text.match(new RegExp(`(?:${labelPattern})\\b(.{0,35})`, "i"))?.[1] ?? "";
+  const nearbyChecked = /(?:☑|✅|\[(?:x|X|✓|✔)\]|\((?:x|X|✓|✔)\)|\bchecked\b|\byes\b|\btrue\b)/i.test(nearbyWindow);
+  const nearbyUnchecked = /(?:☐|\[\s?\]|\(\s?\)|\bunchecked\b|\bno\b|\bfalse\b)/i.test(nearbyWindow);
+
+  if (nearbyChecked && !nearbyUnchecked) return true;
+  if (nearbyUnchecked && !nearbyChecked) return false;
+
+  return undefined;
+};
+
+const parsePatientText = (rawText: string): Partial<Patient> => {
+  const text = normalizeText(rawText);
+
+  const fullName =
+    sanitizeFullName(
+      extractValueByLabel(text, "patient\\s*name|full\\s*name")
+    ) ?? extractNameFallback(text);
+  const dob = parseDate(
+    extractValueByLabel(text, "date\\s*of\\s*birth|dob|birth\\s*date") ??
+      extractFirstMatch(text, [
+        /(?:date\s*of\s*birth|dob|birth\s*date)\s*[:\-]?\s*([0-3]?\d[\-\/.][01]?\d[\-\/.](?:\d{2}|\d{4})|(?:\d{4}[\-\/.][01]?\d[\-\/.][0-3]?\d))/i,
+      ])
+  );
+  const age = parseNumber(
+    extractFirstMatch(text, [
+      /(?:age)\s*[:\-]?\s*(\d{1,3})(?:\s*years?)?/i,
+    ])
+  );
+  const gender = parseGender(
+    extractFirstMatch(text, [
+      /(?:gender|sex)\s*[:\-]?\s*(male|female|other)/i,
+    ])
+  );
+  const contact = cleanInlineField(
+    extractValueByLabel(text, "contact(?:\\s*(?:details|number|no\\.?))?|phone(?:\\s*number)?|mobile(?:\\s*number)?|email") ??
+      extractFirstMatch(text, [
+        /(?:contact(?:\s*(?:details|number|no\.?))?|phone(?:\s*number)?|mobile(?:\s*number)?|email)\s*[:\-]?\s*([+()\-\d\s]{7,20}|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/i,
+      ])
+  );
+  const admissionDate = parseDate(
+    extractFirstMatch(text, [
+      /(?:admission\s*date|admitted\s*on|date\s*of\s*examination|exam(?:ination)?\s*date)\s*[:\-]?\s*([A-Za-z0-9\-\/.\s,]+)/i,
+    ])
+  );
+
+  const bpMatch = text.match(/(?:blood\s*pressure|bp)\s*[:\-]?\s*(\d{2,3})\s*\/\s*(\d{2,3})/i);
+
+  const heartRate = parseNumber(
+    extractFirstMatch(text, [
+      /(?:heart\s*rate|hr|pulse)\s*[:\-]?\s*(\d{2,3}(?:\.\d+)?)/i,
+    ])
+  );
+  const systolicBP =
+    parseNumber(
+      extractFirstMatch(text, [
+        /(?:systolic\s*bp|sbp)\s*[:\-]?\s*(\d{2,3}(?:\.\d+)?)/i,
+      ])
+    ) ?? (bpMatch ? Number(bpMatch[1]) : undefined);
+  const diastolicBP =
+    parseNumber(
+      extractFirstMatch(text, [
+        /(?:diastolic\s*bp|dbp)\s*[:\-]?\s*(\d{2,3}(?:\.\d+)?)/i,
+      ])
+    ) ?? (bpMatch ? Number(bpMatch[2]) : undefined);
+  const spo2 = parseNumber(
+    extractFirstMatch(text, [
+      /(?:spo2|oxygen\s*saturation(?:\s*\(spo2\))?|o2\s*sat)\s*[:\-]?\s*(\d{1,3}(?:\.\d+)?)/i,
+    ])
+  );
+  const temperature = parseNumber(
+    extractFirstMatch(text, [
+      /(?:body\s*temperature|temperature|temp)\s*[:\-]?\s*(\d{2,3}(?:\.\d+)?)/i,
+    ])
+  );
+  const respRate = parseNumber(
+    extractFirstMatch(text, [
+      /(?:respiratory\s*rate|resp\s*rate|rr)\s*[:\-]?\s*(\d{1,3}(?:\.\d+)?)/i,
+    ])
+  );
+
+  const erVisits = parseNumber(
+    extractFirstMatch(text, [
+      /(?:er\s*visits|emergency\s*visits)\s*[:\-]\s*(\d+)/i,
+    ])
+  );
+
+  const diabetes = extractBooleanByLabel(text, "diabetes");
+  const copd = extractBooleanByLabel(text, "copd");
+  const cardiacDisease = extractBooleanByLabel(text, "cardiac\\s*disease|heart\\s*disease");
+
+  const wbc = extractBooleanByLabel(text, "(?:elevated\\s*)?wbc");
+  const creatinine = extractBooleanByLabel(text, "(?:high\\s*)?creatinine");
+  const crp = extractBooleanByLabel(text, "(?:high\\s*)?crp");
+
+  const notes = extractFirstMatch(text, [
+    /(?:notes|clinical\s*notes|summary)\s*[:\-]?\s*(.+?)(?=\s+(?:doctor|physician|signature|end\s*of\s*report)\b|$)/i,
+  ]);
+
+  const parsed: Partial<Patient> = {};
+
+  if (fullName) parsed.fullName = fullName;
+  if (dob) parsed.dateOfBirth = dob;
+  if (age !== undefined) parsed.age = Math.max(0, Math.round(age));
+  if (!parsed.age && dob) parsed.age = calculateAge(dob);
+  if (gender) parsed.gender = gender;
+  if (contact) parsed.contact = contact;
+  if (admissionDate) parsed.admissionDate = admissionDate;
+  if (heartRate !== undefined) parsed.heartRate = heartRate;
+  if (systolicBP !== undefined) parsed.systolicBP = systolicBP;
+  if (diastolicBP !== undefined) parsed.diastolicBP = diastolicBP;
+  if (spo2 !== undefined) parsed.spo2 = spo2;
+  if (temperature !== undefined) parsed.temperature = temperature;
+  if (respRate !== undefined) parsed.respRate = respRate;
+  if (erVisits !== undefined) parsed.erVisits = Math.max(0, Math.round(erVisits));
+  if (notes) parsed.notes = notes;
+
+  if ([diabetes, copd, cardiacDisease].some((value) => value !== undefined)) {
+    parsed.chronicConditions = {
+      diabetes: diabetes ?? false,
+      copd: copd ?? false,
+      cardiacDisease: cardiacDisease ?? false,
+    };
+  }
+
+  if ([wbc, creatinine, crp].some((value) => value !== undefined)) {
+    parsed.labs = {
+      wbc: wbc ?? false,
+      creatinine: creatinine ?? false,
+      crp: crp ?? false,
+    };
+  }
+
+  return parsed;
+};
 
 /**
  * Convert database patient row to application format
@@ -327,42 +616,34 @@ export const patientAPI = {
     }
   },
 
-  // Upload PDF to Supabase Storage
+  // Parse PDF in-browser and return extracted patient fields
   async parsePDF(file: File): Promise<Partial<Patient>> {
     try {
-      console.log("[parsePDF] Starting PDF upload. File:", file.name, "Size:", file.size, "Type:", file.type);
-      
-      // Generate unique filename
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-      
-      // Upload to Supabase Storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from("pdf-uploads")
-        .upload(fileName, file, {
-          cacheControl: "3600",
-          upsert: false,
-        });
+      const arrayBuffer = await file.arrayBuffer();
+      const pdfDocument = await getDocument({ data: arrayBuffer }).promise;
 
-      if (uploadError) throw uploadError;
+      let fullText = "";
+      for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {
+        const page = await pdfDocument.getPage(pageNumber);
+        const content = await page.getTextContent();
+        const pageText = content.items
+          .map((item) => ("str" in item ? item.str : ""))
+          .join(" ");
+        fullText += ` ${pageText}`;
+      }
 
-      console.log("[parsePDF] Uploaded to:", uploadData.path);
+      const parsed = parsePatientText(fullText);
+      console.log("[parsePDF] Extracted text preview:", normalizeText(fullText).slice(0, 1200));
+      console.log("[parsePDF] Parsed fields:", parsed);
+      if (Object.keys(parsed).length === 0) {
+        throw new Error("No patient fields could be detected in this PDF.");
+      }
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from("pdf-uploads")
-        .getPublicUrl(fileName);
-
-      console.log("[parsePDF] Public URL:", urlData.publicUrl);
-
-      // For now, return basic info - actual PDF parsing would need a serverless function
-      // You can add Supabase Edge Function for PDF parsing if needed
-      return {
-        notes: `PDF uploaded: ${file.name}`,
-      };
-    } catch (err: any) {
+      return parsed;
+    } catch (err: unknown) {
       console.error("[parsePDF] Full error:", err);
-      alert(`PDF Upload Error: ${err.message}\n\nCheck console for details`);
+      const message = err instanceof Error ? err.message : "Unknown PDF parsing error";
+      alert(`PDF Parse Error: ${message}`);
       throw err;
     }
   },
